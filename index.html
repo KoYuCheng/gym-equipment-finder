@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GymEquipment Visual Finder | 視覺化肌群健身器材檢索</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+  html{scroll-padding-top:env(safe-area-inset-top,0px)}
+  body{background:#0f172a;margin:0;font-family:system-ui,-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif}
+  .body{fill:#1e293b}
+  .m{fill:#334155;stroke:#0f172a;stroke-width:1.5;cursor:pointer;transition:fill .2s}
+  .m:hover{fill:#22d3ee}
+  .m.hint{fill:#155e75}
+  .m.on{fill:#10b981;animation:glow 1.6s ease-in-out infinite}
+  @keyframes glow{0%,100%{filter:drop-shadow(0 0 2px #10b981);fill:#10b981}50%{filter:drop-shadow(0 0 12px #34d399) drop-shadow(0 0 4px #67e8f9);fill:#34d399}}
+  .fadein{animation:fi .35s ease both}
+  @keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useRef } = React;
+
+/* ---------- inline SVG icons (Lucide-like) ---------- */
+const Icon = ({ d, size = 18, className = "" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{d}</svg>
+);
+const IconDumbbell = (p) => <Icon {...p} d={<path d="M6.5 6.5v11M17.5 6.5v11M3 9v6M21 9v6M6.5 12h11"/>} />;
+const IconPlay = (p) => <Icon {...p} d={<><circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/></>} />;
+const IconInfo = (p) => <Icon {...p} d={<><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></>} />;
+const IconActivity = (p) => <Icon {...p} d={<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>} />;
+const IconUser = (p) => <Icon {...p} d={<><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></>} />;
+const IconReset = (p) => <Icon {...p} d={<><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></>} />;
+const IconCube = (p) => <Icon {...p} d={<><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/></>} />;
+
+/* ---------- goals ---------- */
+const GOALS = [
+  { id: "all", label: "全部器械", desc: "瀏覽所有肌群與器械，點選人體地圖可依部位篩選。" },
+  { id: "posture", label: "改善圓肩/駝背", desc: "強化上背、後三角與肩胛穩定肌群，平衡長期久坐造成的前傾體態。" },
+  { id: "chest", label: "挺拔胸型/改善下胸", desc: "著重上胸飽滿與中下胸厚度，打造立體挺拔的胸型線條。" },
+  { id: "abs", label: "顯現腹肌/修飾腰側", desc: "訓練腹直肌與腹斜肌，搭配飲食控制讓核心與腰側線條更明顯。" },
+];
+
+/* ---------- DATA DICTIONARY ---------- */
+const MUSCLES = {
+  upperChest: { view: "front", zh: "上胸", en: "Upper Pectoralis", goal: "強化鎖骨部胸大肌，塑造胸型上緣飽滿度。",
+    machines: [
+      { zh: "上胸器械推胸", en: "Incline Machine Chest Press", sub: "胸大肌鎖骨部、前三角", goals: ["chest"], creator: "兆佑",
+        tips: ["RPE 7–8：離心 2–3 秒，不鎖死手肘", "沉肩挺胸，肩胛後收貼緊椅背", "手肘約 45 度，勿完全外開"] },
+      { zh: "滑輪低位上胸飛鳥", en: "Low-to-High Cable Fly", sub: "胸大肌上束", goals: ["chest"], creator: "蓋伊",
+        tips: ["RPE 7：手臂微彎固定角度", "由下往上畫弧，頂點停 1 秒", "避免聳肩，核心收緊不代償"] },
+      { zh: "史密斯上斜臥推", en: "Smith Machine Incline Press", sub: "胸大肌上束、前三角", goals: ["chest"], creator: "熱血阿傑",
+        tips: ["RPE 8：務必設好安全卡榫", "椅背約 30 度，槓落鎖骨下方", "前臂垂直地面，肩胛後收"] },
+      { zh: "槓片式上斜推胸機", en: "Plate-Loaded Incline Press", sub: "上胸、前三角", goals: ["chest"], creator: "兆佑",
+        tips: ["RPE 7–8：離心 2–3 秒", "沉肩挺胸，胸口對準把手", "推到近伸直不鎖死手肘"] } ] },
+  lowerChest: { view: "front", zh: "中下胸", en: "Mid/Lower Pectoralis", goal: "加強胸大肌胸肋部，增加中下側厚度與推力。",
+    machines: [
+      { zh: "坐姿推胸機", en: "Seated Chest Press", sub: "胸大肌、前三角、三頭", goals: ["chest"], creator: "游書庭",
+        tips: ["RPE 7–8：推到接近伸直不鎖死", "把手對齊胸中線，座椅高度適中", "肩胛後收下沉，胸口主動挺起"] },
+      { zh: "滑輪高位下胸夾", en: "High-to-Low Cable Fly", sub: "胸大肌下束", goals: ["chest"], creator: "蓋伊",
+        tips: ["RPE 7：身體微前傾、一腳在前", "由上往下夾向肚臍前方", "手臂角度固定，控制離心不甩動"] },
+      { zh: "蝴蝶機夾胸", en: "Pec Deck Fly", sub: "胸大肌內側", goals: ["chest"], creator: "兆佑",
+        tips: ["RPE 7：用胸肌『抱』而非手臂拉", "夾緊停 1 秒，打開不過度後拉", "全程沉肩，頭部勿前探"] },
+      { zh: "下斜推胸機", en: "Decline Chest Press", sub: "胸大肌下束", goals: ["chest"], creator: "蓋伊",
+        tips: ["RPE 7–8：控制離心不彈震", "座椅調整讓把手落在下胸高度", "手肘約 45 度，肩胛穩定"] },
+      { zh: "史密斯平板臥推", en: "Smith Machine Flat Bench Press", sub: "胸大肌中束、三頭", goals: ["chest"], creator: "熱血阿傑",
+        tips: ["RPE 8：設好安全卡榫", "槓落胸線（乳頭附近）", "腳踩穩、肩胛後收下沉"] } ] },
+  delts: { view: "front", zh: "前側三角肌", en: "Anterior/Lateral Deltoid", goal: "發展肩部寬度與圓潤度，提升推舉與肩部穩定。",
+    machines: [
+      { zh: "肩推機", en: "Machine Shoulder Press", sub: "前/側三角、三頭", goals: [], creator: "兆佑",
+        tips: ["RPE 7–8：肩痛立即停止", "椅背貼緊，下背不過度反弓", "避免聳肩，向上微內收"] },
+      { zh: "側平舉機", en: "Lateral Raise Machine", sub: "側三角肌", goals: [], creator: "熱血阿傑",
+        tips: ["RPE 8：輕重量、高控制", "想像用手肘帶動，抬至肩高即可", "離心慢放 2–3 秒，避免聳肩"] },
+      { zh: "史密斯肩推", en: "Smith Machine Shoulder Press", sub: "前/側三角", goals: [], creator: "熱血阿傑",
+        tips: ["RPE 7–8：下放至耳朵高度", "核心收緊避免下背過度反弓", "槓路徑略前於臉，肩痛即停"] },
+      { zh: "滑輪側平舉", en: "Cable Lateral Raise", sub: "側三角肌", goals: [], creator: "蓋伊",
+        tips: ["RPE 8：全程維持張力", "手肘微彎，抬至肩高", "身體穩定不借力甩動"] } ] },
+  biceps: { view: "front", zh: "二頭肌", en: "Biceps Brachii", goal: "強化肘屈曲與前臂旋後，雕塑手臂前側線條。",
+    machines: [
+      { zh: "牧師椅彎舉機", en: "Preacher Curl Machine", sub: "肱二頭肌、肱肌", goals: [], creator: "兆佑",
+        tips: ["RPE 8：底部不完全放鬆鎖死", "腋下貼緊墊子，上臂固定", "頂端擠壓 1 秒，不甩肩"] },
+      { zh: "滑輪二頭彎舉", en: "Cable Biceps Curl", sub: "肱二頭肌長頭", goals: [], creator: "蓋伊",
+        tips: ["RPE 7–8：離心 2–3 秒維持張力", "手肘固定於身側", "避免身體後仰借力"] },
+      { zh: "坐姿二頭彎舉機", en: "Seated Biceps Curl Machine", sub: "肱二頭肌", goals: [], creator: "游書庭",
+        tips: ["RPE 8：上臂貼緊墊子", "慢速離心 2–3 秒", "頂端擠壓，肩膀放鬆下沉"] },
+      { zh: "滑輪雙臂二頭彎舉", en: "Cable Double Biceps Curl", sub: "肱二頭肌短頭", goals: [], creator: "蓋伊",
+        tips: ["RPE 7：手肘微高於肩，維持固定", "向頭部兩側彎舉，頂端夾緊", "避免聳肩與身體搖晃"] } ] },
+  abs: { view: "front", zh: "腹肌核心", en: "Abs / Core", goal: "強化腹直肌、腹斜肌與核心穩定，提升軀幹控制。",
+    machines: [
+      { zh: "腹肌捲腹機", en: "Ab Crunch Machine", sub: "腹直肌", goals: ["abs"], creator: "游書庭",
+        tips: ["RPE 7–8：控制回程保持張力", "以『捲脊椎』帶動，非手臂下壓", "吐氣時肋骨往骨盆靠近"] },
+      { zh: "滑輪跪姿捲腹", en: "Cable Crunch", sub: "腹直肌上中段", goals: ["abs"], creator: "蓋伊",
+        tips: ["RPE 7：重量適中，不拉腰椎", "髖部固定，只讓脊椎彎曲", "繩把置於額頭兩側，勿用手拉"] },
+      { zh: "滑輪斜向伐木", en: "Cable Woodchop", sub: "腹外斜肌、腹內斜肌（腰側）", goals: ["abs"], creator: "熱血阿傑",
+        tips: ["RPE 6–7：以軀幹旋轉帶動", "骨盆穩定，手臂只是連接", "全程核心收緊，慢速控制"] },
+      { zh: "羅馬椅抬腿", en: "Captain's Chair Leg Raise", sub: "下腹、髂腰肌", goals: ["abs"], creator: "熱血阿傑",
+        tips: ["RPE 7：骨盆後傾捲起才練到下腹", "背貼緊、肩胛下沉不晃", "握力不足請用護腕或屈膝版"] },
+      { zh: "旋轉軀幹機", en: "Rotary Torso Machine", sub: "腹斜肌（腰側）", goals: ["abs"], creator: "游書庭",
+        tips: ["RPE 6–7：慢速旋轉，髖部固定", "以腹斜肌發力，非用手臂推", "轉到末端停 1 秒，避免過度扭腰"] },
+      { zh: "滑輪側彎", en: "Cable Side Bend", sub: "腹斜肌、腰方肌", goals: ["abs"], creator: "蓋伊",
+        tips: ["RPE 6–7：重量適中，勿過重", "身體在冠狀面側彎，不前後傾", "頂端收緊腰側，慢速回位"] } ] },
+  quads: { view: "front", zh: "股四頭肌", en: "Quadriceps", goal: "建立下肢推力與膝伸展力量，提升下肢質量。",
+    machines: [
+      { zh: "腿推機", en: "Leg Press", sub: "股四頭、臀大肌", goals: [], creator: "兆佑",
+        tips: ["RPE 7–8：設好安全卡榫，膝不鎖死", "下背與臀部全程貼緊椅墊", "膝蓋對準腳尖，不內夾"] },
+      { zh: "腿伸展機", en: "Leg Extension", sub: "股直肌、股外側肌", goals: [], creator: "游書庭",
+        tips: ["RPE 8：有膝痛史請輕重量短行程", "膝蓋對齊轉軸，墊在腳踝上方", "頂端停 1 秒，避免甩動"] },
+      { zh: "哈克深蹲機", en: "Hack Squat", sub: "股四頭、臀大肌", goals: [], creator: "蓋伊",
+        tips: ["RPE 7–8：設好安全卡榫", "背部全程貼緊，膝順著腳尖", "蹲到大腿平行，離心 2–3 秒"] },
+      { zh: "史密斯深蹲", en: "Smith Machine Squat", sub: "股四頭、臀、核心", goals: [], creator: "熱血阿傑",
+        tips: ["RPE 7–8：腳略前於槓路徑", "核心收緊、脊椎中立", "蹲至大腿平行，膝不內夾"] } ] },
+  traps: { view: "back", zh: "上背/斜方肌", en: "Upper Back / Trapezius", goal: "強化肩胛穩定與上背厚度，改善圓肩駝背。",
+    machines: [
+      { zh: "胸墊式坐姿划船機", en: "Chest-Supported Row", sub: "菱形肌、中下斜方", goals: ["posture"], creator: "兆佑",
+        tips: ["RPE 7–8：頂端夾緊 1 秒", "胸貼墊子，先後收肩胛再拉手肘", "手肘往後而非往上，避免聳肩"] },
+      { zh: "機械肩聳", en: "Machine Shrug", sub: "上斜方肌", goals: [], creator: "熱血阿傑",
+        tips: ["RPE 7：重量勿過重防頸代償", "垂直上提，不轉圈", "頂端停 1–2 秒，頸部放鬆"] },
+      { zh: "T 槓划船機", en: "T-Bar Row Machine", sub: "中背、菱形肌、闊背", goals: ["posture"], creator: "兆佑",
+        tips: ["RPE 7–8：胸貼墊子或保持脊椎中立", "手肘貼身往後拉，頂端夾緊", "避免聳肩，離心慢放"] },
+      { zh: "羅馬椅背伸展", en: "Back Extension (Roman Chair)", sub: "豎脊肌、臀大肌", goals: ["posture"], creator: "游書庭",
+        tips: ["RPE 6–7：以髖鉸鏈為主，不過度反弓", "起身至身體成一直線即可", "頭頸中立，離心 2–3 秒"] } ] },
+  lats: { view: "back", zh: "闊背肌", en: "Latissimus Dorsi", goal: "拓寬背部寬度，提升下拉與划船力量。",
+    machines: [
+      { zh: "滑輪下拉機", en: "Lat Pulldown", sub: "闊背肌、大圓肌", goals: ["posture"], creator: "蓋伊",
+        tips: ["RPE 7–8：回程慢放，肩胛保持控制", "胸口微挺，沉肩後以手肘下拉", "拉到鎖骨附近，不後仰甩動"] },
+      { zh: "輔助式引體向上機", en: "Assisted Pull-up Machine", sub: "闊背肌、二頭肌", goals: [], creator: "兆佑",
+        tips: ["RPE 8：選可做 8–12 下的輔助重量", "先下沉肩胛再發力", "下巴過槓，下放至手臂近伸直"] },
+      { zh: "直臂滑輪下壓", en: "Straight-Arm Pulldown", sub: "闊背肌", goals: [], creator: "游書庭",
+        tips: ["RPE 7：手臂微彎固定，用闊背下壓", "上半身微前傾、核心穩定", "感受腋下發力，勿用手臂"] },
+      { zh: "坐姿滑輪划船", en: "Seated Cable Row", sub: "闊背、菱形肌、中斜方", goals: ["posture"], creator: "蓋伊",
+        tips: ["RPE 7–8：先沉肩再後收肩胛", "手肘貼身往後，腰背挺直", "頂端夾緊 1 秒，勿後仰借力"] } ] },
+  rearDelts: { view: "back", zh: "後三角肌", en: "Posterior Deltoid", goal: "平衡肩部前後肌力，改善姿勢與肩部健康。",
+    machines: [
+      { zh: "反向蝴蝶機", en: "Reverse Pec Deck", sub: "後三角、菱形肌", goals: ["posture"], creator: "兆佑",
+        tips: ["RPE 7：輕重量、高控制", "胸貼墊子，手肘略高於手腕", "避免聳肩，頂端停 1 秒"] },
+      { zh: "滑輪面拉", en: "Cable Face Pull", sub: "後三角、旋轉肌群", goals: ["posture"], creator: "熱血阿傑",
+        tips: ["RPE 6–7：不用身體後仰借力", "繩把與眼睛同高，拉向額頭兩側", "手肘高於手腕、手掌外旋向後"] },
+      { zh: "滑輪反向飛鳥", en: "Cable Reverse Fly", sub: "後三角、菱形肌", goals: ["posture"], creator: "熱血阿傑",
+        tips: ["RPE 6–7：輕重量、高控制", "手臂微彎，往兩側水平展開", "避免聳肩，頂端停 1 秒"] } ] },
+  triceps: { view: "back", zh: "三頭肌", en: "Triceps Brachii", goal: "強化肘伸展力量，增加手臂圍度。",
+    machines: [
+      { zh: "滑輪三頭下壓", en: "Cable Triceps Pushdown", sub: "肱三頭肌外側/長頭", goals: [], creator: "游書庭",
+        tips: ["RPE 8：身體不前後搖晃", "手肘貼緊身體兩側", "完全伸直時擠壓 1 秒"] },
+      { zh: "坐姿三頭撐體機", en: "Seated Dip Machine", sub: "肱三頭肌、下胸", goals: [], creator: "蓋伊",
+        tips: ["RPE 7：伸直時不鎖死手肘", "肩膀下沉，避免聳肩前伸", "手肘靠近身體往下推"] },
+      { zh: "三頭伸展機", en: "Triceps Extension Machine", sub: "肱三頭肌", goals: [], creator: "游書庭",
+        tips: ["RPE 8：上臂貼緊墊子", "完全伸直時擠壓 1 秒", "慢速回位，不鎖死手肘"] },
+      { zh: "滑輪過頭三頭伸展", en: "Cable Overhead Triceps Extension", sub: "三頭肌長頭", goals: [], creator: "兆佑",
+        tips: ["RPE 7–8：手肘指向前方固定", "核心收緊，避免腰部反弓", "充分拉長後再伸直"] } ] },
+  glutes: { view: "back", zh: "臀腿後側", en: "Glutes / Hamstrings", goal: "發展髖伸展與膝屈曲力量，強化後鏈與臀部線條。",
+    machines: [
+      { zh: "腿後彎舉機", en: "Leg Curl Machine", sub: "股二頭肌、半腱半膜肌", goals: [], creator: "兆佑",
+        tips: ["RPE 7–8：不鎖死膝蓋", "髖部貼緊墊子，避免骨盆翹起", "屈膝到底停 1 秒，慢慢放回"] },
+      { zh: "臀推機", en: "Hip Thrust Machine", sub: "臀大肌", goals: [], creator: "蓋伊",
+        tips: ["RPE 7–8：腳掌踩穩，膝對準腳尖", "下巴微收，肋骨不外翻", "頂端夾臀 1–2 秒，腰椎中立"] },
+      { zh: "髖外展機", en: "Hip Abduction Machine", sub: "臀中肌、臀小肌", goals: [], creator: "游書庭",
+        tips: ["RPE 7：坐正貼背，核心收緊", "以臀部發力外推，勿甩動", "回程控制不彈震"] },
+      { zh: "髖內收機", en: "Hip Adduction Machine", sub: "內收肌群", goals: [], creator: "游書庭",
+        tips: ["RPE 7：避免過大活動範圍", "身體坐穩，慢速夾緊", "回程控制，不讓重量片撞擊"] },
+      { zh: "滑輪臀部後踢", en: "Cable Glute Kickback", sub: "臀大肌", goals: [], creator: "蓋伊",
+        tips: ["RPE 7：骨盆穩定，勿過度反弓", "由臀部發力往後踢，停 1 秒", "支撐腳站穩，核心收緊"] },
+      { zh: "站姿小腿提踵機", en: "Standing Calf Raise Machine", sub: "腓腸肌、比目魚肌", goals: [], creator: "熱血阿傑",
+        tips: ["RPE 8：全幅度，底部充分拉伸", "頂端停 1–2 秒，踮到最高", "慢速離心，膝蓋勿晃動"] } ] },
+};
+
+/* [cx, cy, rx, ry, rotation] */
+const SHAPES = {
+  upperChest: [[82,98,17,8,-8],[118,98,17,8,8]],
+  lowerChest: [[82,114,16,9,0],[118,114,16,9,0]],
+  delts: [[58,98,10,12,0],[142,98,10,12,0]],
+  biceps: [[50,132,7,17,8],[150,132,7,17,-8]],
+  abs: [[100,150,13,30,0]],
+  quads: [[82,250,15,45,3],[118,250,15,45,-3]],
+  traps: [[100,92,26,14,0]],
+  lats: [[78,135,15,28,-6],[122,135,15,28,6]],
+  rearDelts: [[58,98,10,12,0],[142,98,10,12,0]],
+  triceps: [[50,132,7,17,8],[150,132,7,17,-8]],
+  glutes: [[86,200,16,14,0],[114,200,16,14,0],[84,262,13,42,2],[116,262,13,42,-2]],
+};
+const HUE = { upperChest:160, lowerChest:170, delts:190, biceps:200, abs:150, quads:210, traps:180, lats:165, rearDelts:195, triceps:205, glutes:155 };
+const COLORS = { "兆佑":"text-emerald-300", "蓋伊":"text-cyan-300", "熱血阿傑":"text-amber-300", "游書庭":"text-fuchsia-300" };
+const ALL = [];
+Object.entries(MUSCLES).forEach(([mk, m]) => m.machines.forEach(x => ALL.push({ ...x, mk, mz: m.zh })));
+const yt = (q) => "https://www.youtube.com/results?search_query=" + encodeURIComponent(q);
+
+/* ---------- components ---------- */
+function BodyMap({ view, active, hints, onSelect, onHover }) {
+  const keys = Object.keys(MUSCLES).filter(k => MUSCLES[k].view === view);
+  return (
+    <svg viewBox="0 0 200 340" className="w-full max-w-[260px] mx-auto select-none">
+      <g className="body">
+        <circle cx="100" cy="36" r="17" /><rect x="92" y="50" width="16" height="14" rx="4" />
+        <path d="M62 70 Q100 58 138 70 L144 90 L132 120 L126 185 L74 185 L68 120 L56 90 Z" />
+        <rect x="40" y="90" width="20" height="80" rx="9" transform="rotate(8 50 130)" />
+        <rect x="140" y="90" width="20" height="80" rx="9" transform="rotate(-8 150 130)" />
+        <rect x="68" y="182" width="64" height="26" rx="12" />
+        <rect x="68" y="205" width="30" height="100" rx="14" /><rect x="102" y="205" width="30" height="100" rx="14" />
+        <rect x="70" y="300" width="24" height="36" rx="10" /><rect x="106" y="300" width="24" height="36" rx="10" />
+      </g>
+      {keys.map(k => (
+        <g key={k} onClick={() => onSelect(k)} onMouseEnter={() => onHover(k)} onMouseLeave={() => onHover(null)}>
+          {SHAPES[k].map(([cx, cy, rx, ry, r], i) => (
+            <ellipse key={i} className={"m " + (active === k ? "on" : hints.has(k) ? "hint" : "")} cx={cx} cy={cy} rx={rx} ry={ry} transform={`rotate(${r} ${cx} ${cy})`} />
+          ))}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function MachineArt({ hue }) {
+  const c = `hsl(${hue} 80% 65%)`;
+  return (
+    <svg viewBox="0 0 320 140" className="w-full h-full" preserveAspectRatio="xMidYMid slice">
+      <defs><linearGradient id={"g" + hue} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={`hsl(${hue} 60% 22%)`} /><stop offset="1" stopColor="#0f172a" /></linearGradient></defs>
+      <rect width="320" height="140" fill={`url(#g${hue})`} />
+      <g stroke={c} strokeWidth="5" strokeLinecap="round" fill="none">
+        <path d="M100 110V40M100 40h90M190 40v30M70 110h130M220 50v60M205 50h30M205 110h30" /><circle cx="190" cy="82" r="12" />
+      </g>
+      <rect x="86" y="62" width="30" height="12" rx="6" fill={c} opacity=".6" />
+    </svg>
+  );
+}
+
+function MachineCard({ m }) {
+  return (
+    <article className="fadein bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden flex flex-col hover:border-emerald-500/60 transition-all hover:-translate-y-0.5">
+      <div className="h-32 relative"><MachineArt hue={HUE[m.mk]} />
+        <span className="absolute top-2 left-2 text-xs px-2 py-0.5 rounded-full bg-slate-900/80 text-cyan-300">{m.mz}</span>
+        <span className={"absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full bg-slate-900/80 " + COLORS[m.creator]}>{m.creator}</span>
+      </div>
+      <div className="p-4 flex flex-col gap-3 flex-1">
+        <div>
+          <h3 className="text-lg font-bold leading-tight">{m.zh}</h3>
+          <p className="text-sm text-cyan-400">{m.en}</p>
+          <p className="text-xs text-slate-400 mt-1 flex items-center gap-1"><IconActivity size={13} className="text-emerald-400" />目標小肌群：{m.sub}</p>
+        </div>
+        <div>
+          <p className="flex items-center gap-1 text-xs font-semibold text-emerald-400 mb-1.5"><IconInfo size={14} />RPE 與動作要點</p>
+          <ul className="space-y-1.5">
+            {m.tips.map((t, i) => <li key={i} className="text-sm text-slate-300 flex gap-2"><span className="text-emerald-500 font-mono">{i + 1}.</span>{t}</li>)}
+          </ul>
+        </div>
+        <div className="mt-auto grid grid-cols-2 gap-2">
+          <a href={yt("Muscle and Motion " + m.en + " 3D anatomy")} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-xl py-2.5 px-2 bg-cyan-400/15 text-cyan-300 border border-cyan-400/50 hover:bg-cyan-400 hover:text-slate-900 transition-colors">
+            <IconCube size={16} />3D 肌群解剖矯正
+          </a>
+          <a href={yt(m.creator + " " + m.zh)} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-1.5 text-sm font-semibold rounded-xl py-2.5 px-2 bg-emerald-500 text-slate-900 hover:bg-emerald-400 transition-colors">
+            <IconPlay size={16} />真人教練示範
+          </a>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+const IconCamera = (p) => <Icon {...p} d={<><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>} />;
+
+const SCAN_ERR = {
+  not_granted: "你未授權使用 Claude 辨識，請重新整理後再試並按「允許」。",
+  rate_limited: "操作太頻繁，請稍候再試。",
+  images_unavailable: "目前環境不支援圖片辨識，請改用下方名稱搜尋。",
+  image_rejected: "這張圖片無法讀取，請改用 JPG/PNG/WebP 並小於 20MB。",
+  invalid_json: "辨識結果格式異常，請重拍一次或換個角度。",
+};
+const readDataUrl = (f) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+
+function ScanPanel({ onClose }) {
+  const [sample, setSample] = useState(undefined);
+  const [canImg, setCanImg] = useState(false);
+  const [accept, setAccept] = useState("image/jpeg,image/png,image/webp");
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+  const [q, setQ] = useState("");
+  const ctl = useRef(null);
+
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        const sm = window.claude ? await window.claude.use("sample") : null;
+        if (dead) return;
+        setSample(sm || null);
+        if (sm) {
+          const l = await sm.limits().catch(() => null);
+          if (!dead && l && l.images) { setCanImg(true); setAccept(l.images.mediaTypes.join(",")); }
+        }
+      } catch (e) { if (!dead) setSample(null); }
+    })();
+    return () => { dead = true; };
+  }, []);
+
+  const onFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f || !sample) return;
+    setRes(null); setErr(""); setBusy(true);
+    try { setPreview(await readDataUrl(f)); } catch (x) {}
+    ctl.current = new AbortController();
+    const catalog = ALL.map((x, i) => `${i}|${x.en}|${x.zh}`).join("\n");
+    const prompt = `你是健身器材辨識助手。圖片是健身房裡的一台器械（可能包含銘牌、標示、握把、座椅與配重片結構）。請對照下列清單，找出最可能的器械，最多 3 個，由最可能到最不可能。清單格式為 id|英文名|中文名：\n${catalog}\n\n只回傳 JSON，格式：{"is_gym_equipment":true,"guess":"你認為的器械中文名與英文名（即使不在清單內）","matches":[{"id":0,"confidence":"high|medium|low","reason":"繁體中文一句話，說明從圖片哪些特徵判斷"}]}。若圖片不是健身器械或無法判斷，is_gym_equipment 設為 false，matches 為空陣列。`;
+    try {
+      setRes(await sample.json(prompt, { images: f, signal: ctl.current.signal }));
+    } catch (x) {
+      if (x.code !== "cancelled") setErr(SCAN_ERR[x.code] || "辨識失敗，請換個角度重拍，或改用下方名稱搜尋。");
+    } finally { setBusy(false); }
+  };
+
+  const matches = res ? (res.matches || []).filter(m => ALL[m.id]).slice(0, 3) : [];
+  const found = q.trim() ? ALL.filter(x => (x.zh + x.en + x.sub + x.mz).toLowerCase().includes(q.trim().toLowerCase())).slice(0, 6) : [];
+  const CONF = { high: "高度相符", medium: "可能相符", low: "低度相符" };
+
+  return (
+    <section className="fadein max-w-7xl mx-auto px-4 sm:px-8 mt-6">
+      <div className="bg-slate-800/70 border border-cyan-400/40 rounded-2xl p-4 sm:p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-extrabold flex items-center gap-2"><IconCamera className="text-cyan-400" />拍照辨識器械</h2>
+            <p className="text-sm text-slate-400 mt-1">在健身房看到不認識的器械？拍張照，系統會比對資料庫並顯示器械資訊、使用要點與教學影片。</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-100 text-sm shrink-0">收合 ✕</button>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-5 mt-4">
+          <div>
+            {sample === undefined && <p className="text-sm text-slate-400">準備辨識功能中…</p>}
+            {sample === null && <p className="text-sm text-amber-300">拍照辨識需要在 Claude 內開啟此頁面才能使用；你仍可用下方名稱搜尋。</p>}
+            {sample && !canImg && <p className="text-sm text-amber-300">目前環境不支援圖片辨識，請改用下方名稱搜尋。</p>}
+            {sample && canImg && (
+              <label className={"flex items-center justify-center gap-2 rounded-xl py-3 font-semibold cursor-pointer transition-colors " + (busy ? "bg-slate-700 text-slate-400" : "bg-cyan-400 text-slate-900 hover:bg-cyan-300")}>
+                <IconCamera size={18} />{busy ? "辨識中…" : "拍照 / 選擇照片"}
+                <input type="file" accept={accept} capture="environment" className="hidden" disabled={busy} onChange={onFile} />
+              </label>
+            )}
+            {busy && <button onClick={() => ctl.current && ctl.current.abort()} className="mt-2 text-xs text-slate-400 underline">停止</button>}
+            {preview && <img src={preview} alt="你上傳的器械照片" className="mt-3 w-full max-h-64 object-contain rounded-xl border border-slate-700 bg-slate-900" />}
+            <p className="text-xs text-slate-500 mt-2">提示：拍到整台器械與銘牌效果最好。照片會交由 Claude 辨識，並使用你自己的 Claude 額度。</p>
+          </div>
+
+          <div className="md:col-span-2 space-y-4">
+            {busy && <p className="text-cyan-300 animate-pulse">正在比對 {ALL.length} 台器械資料…</p>}
+            {err && <p className="text-rose-300 text-sm">{err}</p>}
+            {res && matches.length === 0 && (
+              <div className="p-4 rounded-xl border border-dashed border-slate-600 text-sm text-slate-300">
+                {res.is_gym_equipment === false ? "這張照片看起來不是健身器械，請重拍。" : "資料庫中找不到相符的器械。"}
+                {res.guess && res.is_gym_equipment !== false && <div className="mt-2">可能是：<span className="text-cyan-300">{res.guess}</span>
+                  <a className="ml-2 text-emerald-400 underline" target="_blank" rel="noopener noreferrer" href={yt(res.guess + " 教學")}>YouTube 搜尋</a></div>}
+              </div>
+            )}
+            {matches.length > 0 && (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {matches.map((m, i) => (
+                  <div key={m.id} className="space-y-2">
+                    <div className="text-xs rounded-lg bg-slate-900 border border-slate-700 px-3 py-2">
+                      <span className={"font-bold " + (m.confidence === "high" ? "text-emerald-400" : "text-amber-300")}>#{i + 1} {CONF[m.confidence] || "可能相符"}</span>
+                      <span className="text-slate-400"> · {m.reason}</span>
+                    </div>
+                    <MachineCard m={ALL[m.id]} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 pt-4 border-t border-slate-700">
+          <label className="text-xs text-slate-400">已知名稱？直接搜尋（中文或英文，例如「蝴蝶機」、「leg press」）</label>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="輸入器械名稱或肌群…"
+            className="w-full mt-1 bg-slate-900 border border-slate-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-emerald-400" />
+          {q.trim() && found.length === 0 && <p className="text-sm text-slate-400 mt-3">找不到符合的器械。</p>}
+          {found.length > 0 && <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">{found.map(m => <MachineCard key={m.en} m={m} />)}</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function App() {
+  const [view, setView] = useState("front");
+  const [active, setActive] = useState("upperChest");
+  const [goal, setGoal] = useState("all");
+  const [hover, setHover] = useState(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const wrap = useRef(null);
+
+  const all = ALL;
+  const byGoal = all.filter(x => goal === "all" || x.goals.includes(goal));
+  const list = byGoal.filter(x => !active || x.mk === active);
+  const hints = new Set(goal === "all" ? [] : byGoal.map(x => x.mk));
+  const G = GOALS.find(g => g.id === goal);
+
+  const pick = (k) => { setActive(k); if (k) setView(MUSCLES[k].view); };
+  const chooseGoal = (id) => { setGoal(id); if (id !== "all") setActive(null); else if (!active) pick("upperChest"); };
+  const switchView = (v) => {
+    setView(v);
+    if (!active || MUSCLES[active].view !== v) setActive(goal === "all" ? Object.keys(MUSCLES).find(k => MUSCLES[k].view === v) : null);
+  };
+  const reset = () => { setGoal("all"); setView("front"); setActive("upperChest"); };
+  const onMove = (e) => { const r = wrap.current.getBoundingClientRect(); setPos({ x: e.clientX - r.left, y: e.clientY - r.top }); };
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-100">
+      <header className="border-b border-slate-800 px-4 sm:px-8 pt-6 pb-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400"><IconDumbbell size={28} /></div>
+            <div>
+              <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight">GymEquipment Finder <span className="text-slate-600 font-light">|</span> <span className="text-emerald-400">視覺化肌群健身器材檢索</span></h1>
+              <p className="text-slate-400 mt-1 text-sm sm:text-base">點擊肌群，快速尋找最適合的固定式器械與權威教學</p>
+            </div>
+          </div>
+          <button onClick={() => setScanOpen(o => !o)}
+            className={"mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold border transition-all " + (scanOpen ? "bg-cyan-400 text-slate-900 border-cyan-300" : "border-cyan-400 text-cyan-300 hover:bg-cyan-400/10")}>
+            <IconCamera size={16} />拍照辨識器械
+          </button>
+          <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+            {GOALS.map(g => (
+              <button key={g.id} onClick={() => chooseGoal(g.id)}
+                className={"shrink-0 px-4 py-2 rounded-full text-sm font-semibold border transition-all " + (goal === g.id ? "bg-emerald-500 border-emerald-400 text-slate-900 shadow-lg shadow-emerald-500/20" : "border-slate-600 text-slate-300 hover:border-cyan-400 hover:text-cyan-300")}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+      {scanOpen && <ScanPanel onClose={() => setScanOpen(false)} />}
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6 grid lg:grid-cols-5 gap-6">
+        <section className="lg:col-span-2 bg-slate-800/60 border border-slate-700 rounded-2xl p-4 sm:p-5 lg:sticky lg:top-4 self-start">
+          <label className="block text-xs text-slate-400 mb-1">快速選擇肌群（手機友善）</label>
+          <select value={active || ""} onChange={(e) => pick(e.target.value || null)}
+            className="w-full mb-3 bg-slate-900 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-400">
+            <option value="">— 全部肌群 —</option>
+            {["front", "back"].map(v => (
+              <optgroup key={v} label={v === "front" ? "正面 Anterior" : "背面 Posterior"}>
+                {Object.keys(MUSCLES).filter(k => MUSCLES[k].view === v).map(k => <option key={k} value={k}>{MUSCLES[k].zh} / {MUSCLES[k].en}</option>)}
+              </optgroup>
+            ))}
+          </select>
+
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex bg-slate-900 rounded-xl p-1">
+              {[["front", "正面"], ["back", "背面"]].map(([v, l]) => (
+                <button key={v} onClick={() => switchView(v)}
+                  className={"px-4 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors " + (view === v ? "bg-emerald-500 text-slate-900" : "text-slate-400 hover:text-slate-100")}>
+                  <IconUser size={14} />{l}
+                </button>
+              ))}
+            </div>
+            <button onClick={reset} className="text-slate-400 hover:text-cyan-400 flex items-center gap-1 text-sm transition-colors"><IconReset size={15} />重置</button>
+          </div>
+
+          <div ref={wrap} className="relative" onMouseMove={onMove}>
+            <BodyMap view={view} active={active} hints={hints} onSelect={pick} onHover={setHover} />
+            {hover && (
+              <div className="pointer-events-none absolute z-10 px-3 py-1.5 rounded-lg bg-slate-950/95 border border-cyan-400/60 text-sm shadow-lg whitespace-nowrap"
+                style={{ left: Math.min(pos.x + 14, 150), top: pos.y + 14 }}>
+                <span className="font-bold text-cyan-300">{MUSCLES[hover].zh}</span> <span className="text-slate-400">/ {MUSCLES[hover].en}</span>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-slate-500 mt-3 flex items-center gap-1"><IconInfo size={13} />點擊肌群發光顯示；深青色代表符合目前目標的部位。</p>
+        </section>
+
+        <section className="lg:col-span-3">
+          <div className="mb-4 p-5 rounded-2xl bg-gradient-to-r from-emerald-500/10 to-cyan-400/10 border border-slate-700">
+            <p className="text-xs uppercase tracking-widest text-cyan-400">目前篩選 · {G.label}{active ? " · " + MUSCLES[active].zh : ""}</p>
+            <h2 className="text-2xl sm:text-3xl font-extrabold mt-1">
+              {active ? <>{MUSCLES[active].zh} <span className="text-emerald-400 text-lg sm:text-xl font-semibold">/ {MUSCLES[active].en}</span></> : G.label}
+            </h2>
+            <p className="text-slate-300 mt-2 text-sm sm:text-base"><span className="text-emerald-400 font-semibold">訓練目標：</span>{active ? MUSCLES[active].goal : G.desc}</p>
+            <p className="text-xs text-slate-500 mt-2">共 {list.length} 款器械 · 影片按鈕為 YouTube 關鍵字搜尋，請挑選最新、評價高的影片。</p>
+          </div>
+          {list.length === 0 ? (
+            <div className="text-center p-10 border border-dashed border-slate-600 rounded-2xl text-slate-400">
+              此肌群在「{G.label}」目標下沒有推薦器械。
+              <div><button onClick={() => chooseGoal("all")} className="mt-3 text-emerald-400 underline">改看全部器械</button></div>
+            </div>
+          ) : (
+            <div key={goal + active} className="grid sm:grid-cols-2 gap-4">
+              {list.map(m => <MachineCard key={m.en} m={m} />)}
+            </div>
+          )}
+          <p className="text-xs text-slate-500 mt-6">⚠ 本工具僅供教育參考，不能取代專業教練或醫療建議；若有疼痛或舊傷，請先諮詢專業人員。</p>
+        </section>
+      </main>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
